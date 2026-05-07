@@ -144,6 +144,26 @@
     #debug-autowin:hover { background: #8aa8ff; }
     #debug-autowin.visible { display: block; }
 
+    /* Mobile-only floating panel-toggle button. Hidden on desktop where the
+       backtick key already opens the panel; visible on touch devices. */
+    #mobile-panel-btn {
+      position: absolute; top: 10px; right: 10px;
+      display: none;
+      font-size: 22px; line-height: 1;
+      width: 44px; height: 44px;
+      color: var(--col-deep);
+      background: var(--col-accent);
+      border: 2px solid #fff;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #2c4ec2, 0 6px 14px rgba(0,0,0,0.4);
+      z-index: 7;
+      pointer-events: auto;
+      padding: 0;
+    }
+    body.touch-input #mobile-panel-btn { display: block; }
+    #mobile-panel-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #2c4ec2; }
+
     /* Help text under HUD — control scheme. Hides in mechanic-mode. */
     #controls {
       position: absolute; bottom: 14px; left: 14px;
@@ -392,6 +412,7 @@
       <div class="hud-pill" id="hud-fps">0 fps</div>
     </div>
     <div id="controls">WASD to move &middot; SPACE to jump &middot; right-click drag to rotate &middot; ` for tune panel</div>
+    <button id="mobile-panel-btn" title="Open tune panel" aria-label="Open tune panel">⚙</button>
     <button id="debug-autowin" title="Skip the round (debug)">AUTOWIN</button>
     <div id="end-banner">
       <h2 id="end-title">SURVIVED!</h2>
@@ -405,7 +426,7 @@
        Sits above the standalone shell so it eclipses HUD pills + end-banner
        while the player is choosing. -->
   <div id="select-screen" aria-hidden="true">
-    <div id="select-title">Choose Your Survivor</div>
+    <div id="select-title">Choose Your Character, Bodie</div>
     <div id="select-subtitle">5 characters &middot; same platform &middot; one winner</div>
     <div id="select-grid" role="radiogroup" aria-label="Character select"></div>
     <div id="select-actions">
@@ -438,6 +459,39 @@
       #announcements-toast   { display: none !important; }
     `;
     document.head.appendChild(shellHide);
+  }
+
+  // Touch-device detection. Tags <body> with .touch-input so CSS can swap
+  // the desktop controls hint for a mobile one and reveal the floating
+  // panel-toggle button (no backtick key on phones). Coarse pointer +
+  // touchstart capability are the standard cues.
+  window.IS_TOUCH_INPUT = (() => {
+    try {
+      const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      const touch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      return !!(coarse || touch);
+    } catch (_) { return false; }
+  })();
+  if (window.IS_TOUCH_INPUT) {
+    document.body.classList.add('touch-input');
+    // Swap the controls hint + wire the floating ⚙ button to the tune panel
+    // toggle once the DOM (and panel.js) are ready.
+    const wireMobile = () => {
+      const c = document.getElementById('controls');
+      if (c) c.innerHTML = 'Drag to move &middot; tap to jump &middot; ⚙ for tune panel';
+      const btn = document.getElementById('mobile-panel-btn');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const tp = window.FallSurvive && window.FallSurvive.tunePanel;
+          if (tp && tp.toggle) tp.toggle();
+        });
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wireMobile);
+    } else {
+      wireMobile();
+    }
   }
 </script>
 

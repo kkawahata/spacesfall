@@ -218,7 +218,7 @@
     s.textContent = `
 #fs-tune-panel {
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: 340px;
+  width: min(340px, 92vw);
   background: rgba(14, 14, 20, 0.92);
   border-left: 2px solid var(--col-accent, #6a8aff);
   color: #f0f0f0;

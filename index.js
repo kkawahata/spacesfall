@@ -150,11 +150,10 @@
     bot_count:            3,
   };
 
-  // Observer / sim mode. Default = observer (watch-only sim, all 5 characters
-  // spawn as bots, no player, camera auto-orbits, click-to-throw drops spheres).
+  // Observer / sim mode. Default = play (select screen + pick a character).
   // URL params override the default:
-  //   ?play=1     → flip into play mode (select screen + pick a character)
-  //   ?observe=1  → force observer (useful if play is the deploy default)
+  //   ?observe=1  → flip into observer mode (watch-only sim, no player)
+  //   ?play=1     → force play (kept for symmetry; matches the deploy default)
   // Either knob can also be flipped at runtime from the tune panel.
   let _simModeUrlOverride = null;
   try {
@@ -163,7 +162,7 @@
     if (_q.has('observe')) _simModeUrlOverride = true;
   } catch (_) {}
   Hooks.simConfig = Hooks.simConfig || {
-    observer_mode: _simModeUrlOverride !== null ? _simModeUrlOverride : true,
+    observer_mode: _simModeUrlOverride !== null ? _simModeUrlOverride : false,
     observer_actor_count: 5,     // characters spawned in observer mode (1..5)
     camera_auto_orbit_speed: 0.06,  // radians/sec — slow cinematic rotation
     click_throw_enabled: true,   // pointer-down spawns a falling sphere at the picked point
@@ -903,6 +902,82 @@
     else if (e.code === 'Space') Game.keysPressed.space = false;
   });
 
+  // Touch input — virtual stick anchored at first touch + tap-to-jump.
+  // Drag-and-hold = continuous movement; quick tap (no drag) = jump pulse.
+  // Multitouch (>=2 fingers) is reserved for camera orbit which Babylon's
+  // ArcRotateCamera handles natively, so we ignore secondary touches here.
+  Game.touchIntent = { forward: 0, right: 0, jump: false };
+  const _touch = {
+    id: null,
+    startX: 0, startY: 0,
+    startTimeMs: 0,
+    moved: false,
+    deadzone_px: 18,        // drag must exceed this before treated as movement
+    full_radius_px: 90,     // beyond this radius = full-tilt motion
+    tap_window_ms: 220,     // brief touch with no drag = jump
+    tap_max_drag_px: 12,
+  };
+  function _resetTouchIntent() {
+    Game.touchIntent.forward = 0;
+    Game.touchIntent.right = 0;
+  }
+  function _clearJumpAfterFrame() {
+    // Jump is consumed by the per-frame loop; clear next tick to avoid sticky.
+    setTimeout(() => { Game.touchIntent.jump = false; }, 100);
+  }
+  canvas.addEventListener('touchstart', (e) => {
+    if (_touch.id !== null) return;             // ignore secondary touches
+    if (e.touches.length > 1) return;
+    const t = e.touches[0];
+    _touch.id = t.identifier;
+    _touch.startX = t.clientX;
+    _touch.startY = t.clientY;
+    _touch.startTimeMs = performance.now();
+    _touch.moved = false;
+  }, { passive: true });
+  canvas.addEventListener('touchmove', (e) => {
+    let t = null;
+    for (const tt of e.touches) if (tt.identifier === _touch.id) { t = tt; break; }
+    if (!t) return;
+    const dx = t.clientX - _touch.startX;
+    const dy = t.clientY - _touch.startY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > _touch.tap_max_drag_px) _touch.moved = true;
+    if (dist < _touch.deadzone_px) {
+      _resetTouchIntent();
+      return;
+    }
+    const usable = Math.max(0, dist - _touch.deadzone_px);
+    const span = Math.max(1, _touch.full_radius_px - _touch.deadzone_px);
+    const mag = Math.min(1, usable / span);
+    const nx = dx / dist;
+    const ny = dy / dist;
+    // Screen Y down → world "back" (player walks toward camera). Map dy>0 to
+    // -forward. Map dx>0 to +right.
+    Game.touchIntent.forward = -ny * mag;
+    Game.touchIntent.right   =  nx * mag;
+    // preventDefault prevents the browser from scrolling/zooming on drag.
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('touchend', (e) => {
+    let stillHere = false;
+    for (const tt of e.touches) if (tt.identifier === _touch.id) { stillHere = true; break; }
+    if (stillHere) return;
+    const heldMs = performance.now() - _touch.startTimeMs;
+    if (!_touch.moved && heldMs <= _touch.tap_window_ms) {
+      // Quick tap with no drag → jump.
+      Game.touchIntent.jump = true;
+      _clearJumpAfterFrame();
+    }
+    _touch.id = null;
+    _resetTouchIntent();
+  }, { passive: true });
+  canvas.addEventListener('touchcancel', () => {
+    _touch.id = null;
+    _resetTouchIntent();
+    Game.touchIntent.jump = false;
+  }, { passive: true });
+
   // ===================================================================== //
   // Frame update. Driven by the Babylon RAF loop via scene.onBeforeRender. //
   // ===================================================================== //
@@ -976,11 +1051,16 @@
         // Camera-relative input: W is "away from camera," AD strafe right/left,
         // S walks back toward camera. Resolve via the camera's projected
         // forward + right vectors so input feels right at any orbit angle.
+        // Touch input (mobile virtual stick) feeds the same axes additively.
         let inForward = 0, inRight = 0;
         if (Game.keysPressed.w) inForward += 1;
         if (Game.keysPressed.s) inForward -= 1;
         if (Game.keysPressed.a) inRight -= 1;
         if (Game.keysPressed.d) inRight += 1;
+        if (Game.touchIntent) {
+          inForward += Game.touchIntent.forward;
+          inRight   += Game.touchIntent.right;
+        }
         if (inForward !== 0 || inRight !== 0) {
           const camFwd = camera.getDirection(BABYLON.Axis.Z);
           const camRgt = camera.getDirection(BABYLON.Axis.X);
@@ -996,7 +1076,7 @@
           const mLen = Math.hypot(mx, mz);
           if (mLen > 1) { mx /= mLen; mz /= mLen; }
         }
-        wantsJump = !!Game.keysPressed.space;
+        wantsJump = !!Game.keysPressed.space || !!(Game.touchIntent && Game.touchIntent.jump);
       } else if (actor.control === 'ai' && Hooks.actorFactory && Hooks.actorFactory.tickAi) {
         Hooks.actorFactory.tickAi(actor, dt, aiGameApi);
         const intent = Hooks.actorFactory.getIntent(actor);
