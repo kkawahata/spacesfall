@@ -1290,7 +1290,14 @@
       Game.win();
     });
   }
+  // Backtick is now owned by the tune panel (panel.js). The AUTOWIN button
+  // is reachable via ?debug=1 query — the keybind is removed for the public
+  // deploy so backtick presses don't flash a debug button on every panel toggle.
+  let _autowinDebug = false;
+  try { _autowinDebug = new URLSearchParams(location.search).has('debug'); } catch (_) {}
+  if (_autowinDebug && debugBtn) debugBtn.classList.add('visible');
   window.addEventListener('keydown', (ev) => {
+    if (!_autowinDebug) return;
     if (ev.key === '`' || ev.key === '~' || ev.code === 'Backquote') {
       if (debugBtn) debugBtn.classList.toggle('visible');
     }
