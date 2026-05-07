@@ -1387,21 +1387,22 @@
   postEvent('mechanic_ready', { engine: 'fall-survive', version: '1.0' });
 
   // Standalone-iframe fallback config — boots a playable round if no host
-  // injects a level_config within 800 ms. Keeps the engine independently
-  // testable + previewable.
+  // injects a level_config within 800 ms. **Observer-mode only**: in play
+  // mode the select screen needs unbounded time for the user to pick a
+  // character, so we don't auto-start the round behind their back.
   setTimeout(() => {
-    if (Game.stateIndex === States.BOOT) {
-      Game.startPlay({
-        level: 1,
-        target_duration_ms: 25000,
-        wave_count: 4,
-        wave_interval_ms: 5000,
-        spheres_per_wave: 3,
-        tile_fall_delay_ms: 800,
-        ring_count: 4,
-        objective_text: 'Survive 25 seconds',
-      });
-    }
+    if (Game.stateIndex !== States.BOOT) return;
+    if (!(Hooks.simConfig && Hooks.simConfig.observer_mode)) return;
+    Game.startPlay({
+      level: 1,
+      target_duration_ms: 25000,
+      wave_count: 4,
+      wave_interval_ms: 5000,
+      spheres_per_wave: 3,
+      tile_fall_delay_ms: 800,
+      ring_count: 4,
+      objective_text: 'Survive 25 seconds',
+    });
   }, 800);
 
   // Audio: TODO — upstream uses .mp3 for soundtrack/endgame/sphere1/sphere2.
