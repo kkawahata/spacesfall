@@ -914,8 +914,8 @@
     moved: false,
     deadzone_px: 18,        // drag must exceed this before treated as movement
     full_radius_px: 90,     // beyond this radius = full-tilt motion
-    tap_window_ms: 220,     // brief touch with no drag = jump
-    tap_max_drag_px: 12,
+    tap_window_ms: 250,     // brief touch with no drag = jump
+    tap_max_drag_px: 22,    // finger wobble tolerance — taps with up to this drag still count
   };
   function _resetTouchIntent() {
     Game.touchIntent.forward = 0;
@@ -1400,6 +1400,9 @@
     const cfg = Hooks.simConfig;
     if (!cfg || !cfg.click_throw_enabled) return;
     if (Game.stateIndex !== States.PLAYING) return;
+    // Skip in play mode — taps in play are reserved for jump (mobile) and
+    // shouldn't drop spheres on the player. Click-to-throw is observer-only.
+    if (Game.player) return;
     const pickInfo = scene.pick(scene.pointerX, scene.pointerY);
     if (!pickInfo || !pickInfo.hit || !pickInfo.pickedPoint) return;
     const p = pickInfo.pickedPoint;

@@ -226,6 +226,16 @@
     }
     @media (max-width: 560px) {
       #select-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      /* On narrow viewports the Start button is JS-relocated into the grid
+         (next to Glider, which sits alone in the 3rd row). Style it so it
+         fills the cell and reads as the obvious next action. */
+      #select-grid > #select-start {
+        align-self: stretch; justify-self: stretch;
+        width: 100%; height: 100%;
+        min-height: 110px;
+        padding: 0; border-radius: 16px;
+        font-size: 18px; letter-spacing: 0.18em;
+      }
     }
     .char-card {
       position: relative;
@@ -472,6 +482,35 @@
       return !!(coarse || touch);
     } catch (_) { return false; }
   })();
+  // Narrow-viewport (phone portrait) Start-button relocation. The default
+  // layout puts Start beneath the grid in #select-actions; on a 2-col grid
+  // the Glider card sits alone in row 3 leaving an empty cell. Move the
+  // Start button into that cell so it's visible without scrolling.
+  const NARROW_MQ = window.matchMedia('(max-width: 560px)');
+  function _placeStart() {
+    const grid = document.getElementById('select-grid');
+    const actions = document.getElementById('select-actions');
+    const start = document.getElementById('select-start');
+    if (!grid || !start) return;
+    if (NARROW_MQ.matches) {
+      if (start.parentElement !== grid) grid.appendChild(start);
+    } else if (actions) {
+      if (start.parentElement !== actions) actions.insertBefore(start, actions.firstChild);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _placeStart);
+  } else {
+    _placeStart();
+  }
+  // Re-apply on resize / orientation change. Also re-apply after select.js
+  // populates cards (it appends to #select-grid; if it ran AFTER our initial
+  // placement, our button might have been pushed out of order — readd).
+  NARROW_MQ.addEventListener && NARROW_MQ.addEventListener('change', _placeStart);
+  window.addEventListener('resize', _placeStart);
+  setTimeout(_placeStart, 250);
+  setTimeout(_placeStart, 800);
+
   if (window.IS_TOUCH_INPUT) {
     document.body.classList.add('touch-input');
     // Swap the controls hint + wire the floating ⚙ button to the tune panel
