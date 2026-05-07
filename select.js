@@ -237,6 +237,10 @@
     });
     startBtn.disabled = false;
     if (hintEl) hintEl.textContent = 'Press Start to drop in';
+    // No-confirm UX: a card click immediately drops the player into the
+    // round. The Start button stays as a fallback if anything intercepts
+    // the card click, but the primary path is one-tap.
+    startRound();
   }
 
   function showSelect() {
