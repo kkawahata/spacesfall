@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fall Survive</title>
+  <style>
+    /* Neutral palette — generic survival-on-hexagon-platform mechanic.
+       IP themes inject their own colors / textures via level_config (skybox_url,
+       hex_top_url, sphere_skin_url, etc.). */
+    :root {
+      --col-bg:       #1a1a22;
+      --col-bg-light: #2a2a36;
+      --col-accent:   #6a8aff;
+      --col-mid:      #3a3a48;
+      --col-deep:     #0e0e14;
+      --col-warn:     #e85d5d;
+      --col-good:     #5dd870;
+    }
+
+    * { box-sizing: border-box; padding: 0; margin: 0; line-height: 1; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--col-bg);
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #f0f0f0;
+    }
+
+    .container { position: relative; width: 100%; height: 100vh; }
+
+    /* Babylon canvas — fills the viewport. In standalone-mode the HUD and
+       debug button overlay it; in mechanic-mode they hide and the canvas
+       takes the full surface. */
+    #render-canvas {
+      position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+      width: 100%; height: 100%;
+      display: block;
+      touch-action: none;
+      outline: none;
+    }
+
+    /* Standalone HUD — top-left FPS / objective strip. Host-mode hides the
+       whole #standalone-shell scope. */
+    #standalone-shell {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+    #hud {
+      position: absolute; top: 12px; left: 12px;
+      display: flex; flex-direction: column; gap: 6px;
+      pointer-events: none;
+    }
+    .hud-pill {
+      background: rgba(14, 14, 20, 0.78);
+      color: #f0f0f0;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(106, 138, 255, 0.4);
+      font: 700 13px/1 system-ui, sans-serif;
+      letter-spacing: 0.04em;
+    }
+    #hud-objective { color: var(--col-accent); }
+    #hud-survived  { color: #ffe080; }
+    #hud-fps       { color: rgba(240, 240, 240, 0.6); font-size: 11px; }
+
+    /* End-state overlay — covers the canvas with a tinted banner on win/lose.
+       Standalone-only. Wave-5: bigger panel + display-class title with a
+       3D-pressed letter shadow + bouncy pill button on Play again. */
+    #end-banner {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      padding: 36px 48px 32px;
+      background: linear-gradient(160deg, rgba(36, 36, 60, 0.94), rgba(20, 20, 32, 0.94));
+      border: 4px solid #fff;
+      border-radius: 22px;
+      text-align: center;
+      pointer-events: auto;
+      z-index: 6;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55), inset 0 0 26px rgba(106, 138, 255, 0.18);
+      min-width: 340px;
+    }
+    #end-banner.visible { display: block; }
+    #end-banner h2 {
+      /* Wave-5 item 2 — display-class 3D-pressed text. Offset shadow uses the
+         engine's accent (--col-accent) for the win register; the lose
+         variant overrides via --col-warn below. The second shadow layer is
+         the diffuse drop the eye reads as page depth. */
+      font-size: 52px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: #fff;
+      margin-bottom: 10px;
+      text-shadow:
+        0 4px 0 var(--col-accent),
+        0 6px 14px rgba(0, 0, 0, 0.5);
+    }
+    #end-banner.lose h2 {
+      color: #fff;
+      text-shadow:
+        0 4px 0 var(--col-warn),
+        0 6px 14px rgba(0, 0, 0, 0.5);
+    }
+    #end-banner p {
+      font-size: 15px; opacity: 0.85; margin-bottom: 22px;
+      letter-spacing: 0.04em;
+    }
+    /* Wave-5 item 1 — bouncy pill button. Shared shape across all
+       game-context buttons; the offset box-shadow simulates a flat-tabletop
+       bottom face that compresses on :active via the translateY swap. */
+    #end-banner button {
+      font: 900 18px/1 system-ui;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      padding: 13px 34px;
+      background: var(--col-accent);
+      color: var(--col-deep);
+      border: 4px solid #fff;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 6px 0 #2c4ec2, 0 8px 18px rgba(0, 0, 0, 0.45);
+      transition: transform 80ms ease, box-shadow 80ms ease, background 120ms ease;
+    }
+    #end-banner button:hover { background: #8aa8ff; }
+    #end-banner button:active {
+      transform: translateY(3px);
+      box-shadow: 0 3px 0 #2c4ec2, 0 4px 10px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Debug AUTOWIN button bottom-right (toggle with backtick). */
+    #debug-autowin {
+      position: absolute; bottom: 14px; right: 14px;
+      display: none;
+      font: 900 13px/1 system-ui;
+      color: var(--col-deep);
+      background: var(--col-accent);
+      padding: 10px 16px; border-radius: 8px;
+      border: 2px solid var(--col-deep);
+      cursor: pointer; user-select: none;
+      z-index: 6;
+      pointer-events: auto;
+    }
+    #debug-autowin:hover { background: #8aa8ff; }
+    #debug-autowin.visible { display: block; }
+
+    /* Help text under HUD — control scheme. Hides in mechanic-mode. */
+    #controls {
+      position: absolute; bottom: 14px; left: 14px;
+      font-size: 11px;
+      color: rgba(240, 240, 240, 0.5);
+      background: rgba(14, 14, 20, 0.6);
+      padding: 6px 10px; border-radius: 6px;
+      pointer-events: none;
+      z-index: 5;
+      letter-spacing: 0.03em;
+    }
+
+    /* ===== Character select screen — wave-3 SELECT agent. ===== */
+    /* Overlay shown on load (and on round end) so the player picks a
+       character before the round runs. Hidden in mechanic-mode (host owns
+       chrome). When dismissed, persists to localStorage and posts a
+       level_config message that triggers Game.startPlay() with the chosen
+       character spawning at platform center. */
+    #select-screen {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px; padding: 36px 24px;
+      background: rgba(14, 14, 20, 0.92);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 10;
+      pointer-events: auto;
+      font-family: 'Azeret Mono', ui-monospace, 'SF Mono', Menlo,
+                   Consolas, monospace;
+    }
+    #select-screen.hidden { display: none; }
+    #select-title {
+      /* Wave-5 item 2 — display-class 3D-pressed letters. Bigger than the
+         original sub-banner treatment because the select screen IS the
+         hero header. Color stays accent-blue (matches the rest of the
+         select chrome); the offset shadow uses a darker shade of the
+         accent so the press reads cohesively, with a soft drop layer. */
+      font-size: 38px; font-weight: 900;
+      letter-spacing: 0.22em;
+      color: #fff;
+      text-transform: uppercase;
+      text-shadow:
+        0 4px 0 var(--col-accent),
+        0 6px 14px rgba(0, 0, 0, 0.55);
+    }
+    #select-subtitle {
+      font-size: 12px; opacity: 0.6;
+      letter-spacing: 0.10em;
+      margin-top: -10px;
+    }
+    #select-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 180px));
+      gap: 14px;
+      max-width: 100%;
+    }
+    @media (max-width: 900px) {
+      #select-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      #select-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+    .char-card {
+      position: relative;
+      display: flex; flex-direction: column;
+      gap: 8px;
+      padding: 14px 12px;
+      background: rgba(26, 26, 34, 0.85);
+      border: 1px solid var(--col-mid);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color 120ms ease, transform 120ms ease,
+                  box-shadow 120ms ease, background 120ms ease;
+      user-select: none;
+    }
+    .char-card:hover {
+      border-color: rgba(106, 138, 255, 0.6);
+      transform: translateY(-2px);
+      background: rgba(36, 36, 48, 0.9);
+    }
+    /* Wave-5 item 1 — small press response on character cards so they share
+       the same bouncy feel as the buttons. The cards aren't pill-shaped
+       (rectangular by design — they're info dense) so we just compress on
+       :active without the offset-shadow trick. */
+    .char-card:active {
+      transform: translateY(1px);
+      transition-duration: 60ms;
+    }
+    .char-card:focus { outline: none; }
+    .char-card.selected {
+      border: 2px solid var(--col-accent);
+      box-shadow: 0 0 0 3px rgba(106, 138, 255, 0.18),
+                  0 6px 24px rgba(106, 138, 255, 0.18);
+      padding: 13px 11px;  /* compensate for the +1 border */
+    }
+    .char-card.selected::after {
+      content: "\2713";
+      position: absolute; top: 8px; right: 10px;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--col-accent);
+      color: var(--col-deep);
+      border-radius: 999px;
+      font: 900 13px/1 system-ui;
+    }
+    .char-swatch {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .char-swatch-disc {
+      width: 28px; height: 32px;
+      border-radius: 999px;
+      flex-shrink: 0;
+      box-shadow: inset 0 -3px 6px rgba(0, 0, 0, 0.25);
+    }
+    /* Cylinder: tall rectangle with slightly rounded short edges (top/bottom). */
+    .char-swatch-disc.shape-cylinder {
+      width: 24px; height: 32px;
+      border-radius: 4px / 12px;
+    }
+    /* Capsule: tall pill — rounded short edges, straight long edges. */
+    .char-swatch-disc.shape-capsule {
+      width: 22px; height: 32px;
+      border-radius: 999px;
+    }
+    /* Sphere: a circle (perfectly round). */
+    .char-swatch-disc.shape-sphere {
+      width: 30px; height: 30px;
+    }
+    .char-shape-tag {
+      font-size: 9px; letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: rgba(240, 240, 240, 0.45);
+      padding: 3px 7px;
+      border: 1px solid var(--col-mid);
+      border-radius: 999px;
+    }
+    .char-name {
+      font-size: 16px; font-weight: 900;
+      letter-spacing: 0.06em;
+      color: #f0f0f0;
+    }
+    .char-tagline {
+      font-size: 11px;
+      font-style: italic;
+      color: rgba(240, 240, 240, 0.65);
+      line-height: 1.35;
+      min-height: 30px;
+    }
+    .char-stats {
+      display: flex; flex-direction: column; gap: 4px;
+      margin-top: 4px;
+    }
+    .char-stat-row {
+      display: grid;
+      grid-template-columns: 56px 1fr 28px;
+      align-items: center;
+      gap: 6px;
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      color: rgba(240, 240, 240, 0.55);
+      text-transform: uppercase;
+    }
+    .char-stat-bar {
+      position: relative;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .char-stat-bar::before {
+      /* baseline tick at 1.0× position */
+      content: "";
+      position: absolute;
+      left: 50%; top: -2px; bottom: -2px;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .char-stat-fill {
+      position: absolute; top: 0; bottom: 0; left: 50%;
+      background: var(--col-accent);
+      border-radius: 999px;
+    }
+    .char-stat-fill.under { background: var(--col-warn); }
+    .char-stat-fill.over  { background: var(--col-good); }
+    .char-stat-val {
+      font-size: 9px; font-weight: 700;
+      color: rgba(240, 240, 240, 0.75);
+      text-align: right;
+    }
+    #select-actions {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    /* Wave-5 item 1 — bouncy pill Start button. Same offset-shadow press
+       pattern as #end-banner button. Disabled-state nukes the offset
+       shadow so the button reads as flat / non-clickable until a card is
+       picked. */
+    #select-start {
+      background: var(--col-accent);
+      color: var(--col-deep);
+      border: 4px solid #fff;
+      padding: 14px 40px;
+      border-radius: 999px;
+      font: 900 16px/1 'Azeret Mono', ui-monospace, system-ui;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 6px 0 #2c4ec2, 0 8px 18px rgba(0, 0, 0, 0.45);
+      transition: transform 80ms ease, box-shadow 80ms ease,
+                  background 120ms ease, opacity 120ms ease;
+    }
+    #select-start:hover:not(:disabled) { background: #8aa8ff; }
+    #select-start:active:not(:disabled) {
+      transform: translateY(3px);
+      box-shadow: 0 3px 0 #2c4ec2, 0 4px 10px rgba(0, 0, 0, 0.45);
+    }
+    #select-start:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      background: var(--col-mid);
+      color: rgba(240, 240, 240, 0.5);
+      border-color: rgba(255, 255, 255, 0.3);
+      box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+    }
+    #select-hint {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: rgba(240, 240, 240, 0.4);
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- Babylon mount — the gameplay core. The only DOM the engine renders in
+       mechanic-mode. The host overlays it via iframe; mechanic-mode hides
+       the standalone shell and binds host HUD parts to the live state events
+       broadcast over postMessage. -->
+  <canvas id="render-canvas" tabindex="0"></canvas>
+
+  <!-- Standalone shell — top HUD pills + bottom controls strip + AUTOWIN
+       debug + end-banner. Hosts hide this entire scope in mechanic-mode. -->
+  <div id="standalone-shell">
+    <div id="hud">
+      <div class="hud-pill" id="hud-objective">— loading —</div>
+      <div class="hud-pill" id="hud-survived">0.0s</div>
+      <div class="hud-pill" id="hud-fps">0 fps</div>
+    </div>
+    <div id="controls">WASD to move &middot; SPACE to jump &middot; ` to toggle AUTOWIN</div>
+    <button id="debug-autowin" title="Skip the round (debug). Toggle with `">AUTOWIN</button>
+    <div id="end-banner">
+      <h2 id="end-title">SURVIVED!</h2>
+      <p id="end-detail">You outlasted the round.</p>
+      <button id="end-retry">Play again</button>
+    </div>
+  </div>
+
+  <!-- Wave-3 character select overlay. Hidden in mechanic-mode (host owns
+       chrome). Populated by select.js after fetching characters.json.
+       Sits above the standalone shell so it eclipses HUD pills + end-banner
+       while the player is choosing. -->
+  <div id="select-screen" aria-hidden="true">
+    <div id="select-title">Choose Your Survivor</div>
+    <div id="select-subtitle">5 characters &middot; same platform &middot; one winner</div>
+    <div id="select-grid" role="radiogroup" aria-label="Character select"></div>
+    <div id="select-actions">
+      <button id="select-start" disabled>Start</button>
+      <div id="select-hint">Click a card, then Start</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Mechanic-mode detection: when the engine runs as an iframe inside a host,
+  // the host injects ?mechanic=1. In that mode the engine becomes a
+  // transparent overlay — the host's painted plate shows through — and the
+  // standalone HUD is hidden. The engine still emits postMessage state
+  // broadcasts so the host can bind its own HUD parts. Mirrors the
+  // IS_MECHANIC_MODE block in engines/suika-game/mechanic/index.html.
+  window.IS_MECHANIC_MODE = (() => {
+    try { return new URLSearchParams(location.search).get('mechanic') === '1'; }
+    catch (_) { return false; }
+  })();
+  if (window.IS_MECHANIC_MODE) {
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+    const shellHide = document.createElement('style');
+    shellHide.id = 'mechanic-mode-shell-hide';
+    shellHide.textContent = `
+      #standalone-shell      { display: none !important; }
+      #select-screen         { display: none !important; }
+      #announcements-popup   { display: none !important; }
+      #announcements-toast   { display: none !important; }
+    `;
+    document.head.appendChild(shellHide);
+  }
+</script>
+
+<!-- Babylon.js 6.x via CDN — engine + GUI not needed (no in-canvas GUI;
+     standalone-shell is HTML/DOM, mechanic-mode HUD is host-owned). The
+     core scene API is enough: MeshBuilder primitives + StandardMaterial +
+     UniversalCamera + DirectionalLight + HemisphericLight. No third-party
+     physics — the survival mechanic uses bespoke kinematic motion +
+     AABB-by-tile ground sensing in index.js. See PORT_NOTES.md for the
+     architecture pick. -->
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<!-- Wave-1 add-on modules. Each registers handlers on window.FallSurvive
+     before index.js boots. Files are intentionally loaded BEFORE index.js
+     so the IIFE sees registered handlers when applyIPTextures /
+     setupTileLighting / etc. fire on level boot. Each loads with onerror
+     swallowed so a missing module is a no-op (engine still works). -->
+<script src="./skybox.js"   onerror="void 0"></script>
+<script src="./lighting.js" onerror="void 0"></script>
+<script src="./vfx.js"      onerror="void 0"></script>
+<script src="./actor.js"    onerror="void 0"></script>
+<script src="./effects.js"  onerror="void 0"></script>
+<script src="./index.js"></script>
+<!-- Wave-3 character-select overlay. Loaded AFTER index.js since it's a
+     standalone overlay module — engine boots in the background, the select
+     screen covers the canvas until the player picks. Posts a level_config
+     message back to the engine to drive Game.startPlay() with the chosen
+     character (read from localStorage on each spawn). -->
+<script src="./select.js" onerror="void 0"></script>
+<!-- Wave-5 announcements + toasts. Lazily builds popup + toast DOM the
+     first time it's invoked, subscribes to Hooks.engine.Game.actors
+     alive-count for milestone popups, wraps Hooks.onLose for the player
+     ELIMINATED popup. Loaded AFTER index.js so window.FallSurvive exists;
+     loaded BEFORE panel.js so its announcementsConfig + splatsConfig knobs
+     surface in the tune panel walk. Hidden in mechanic-mode (host owns
+     chrome). -->
+<script src="./announcements.js" onerror="void 0"></script>
+<!-- Wave-3 runtime tune panel. Auto-discovers every window.FallSurvive.*Config
+     namespace + a preset switcher. Toggle with backtick. Loaded LAST so the
+     engine + all module IIFEs have registered their config bags before the
+     panel walks window.FallSurvive. Hidden in mechanic-mode and while the
+     select-screen overlay is up. -->
+<script src="./panel.js" onerror="void 0"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+{
+  "_design": "Character roster for fall-survive. Stats are MULTIPLIERS over the engine TUNING constants in index.js (move_speed=6.0, jump_velocity=7.5, gravity=20.0, player_radius=0.45, player_height=1.6). Behavior tags drive bot AI. Visual fields drive per-character material + mesh shape. Read by the wave-2 bot-AI agent (for behavior + actor-spawn) and the wave-2 character-select agent (for the select screen). Authoritative — both agents must agree on this schema.",
+
+  "characters": [
+    {
+      "id": "sprinter",
+      "name": "Sprinter",
+      "tagline": "Fast and frail. Overcommits to the edge.",
+      "stats": {
+        "move_speed_mult":     1.40,
+        "jump_velocity_mult":  1.00,
+        "gravity_mult":        1.00,
+        "player_radius_mult":  0.85,
+        "player_height_mult":  1.05
+      },
+      "visual": {
+        "color":      "#ff5d8a",
+        "glow_color": "#ff9ec0",
+        "shape":      "capsule"
+      },
+      "behavior": {
+        "tag": "reckless",
+        "params": { "edge_seek": 0.7, "panic_threshold_ms": 6000 }
+      }
+    },
+    {
+      "id": "hopper",
+      "name": "Hopper",
+      "tagline": "Always jumping. Lighter than anything else.",
+      "stats": {
+        "move_speed_mult":     1.00,
+        "jump_velocity_mult":  1.40,
+        "gravity_mult":        0.85,
+        "player_radius_mult":  1.00,
+        "player_height_mult":  1.00
+      },
+      "visual": {
+        "color":      "#5dc8d8",
+        "glow_color": "#a0e8f0",
+        "shape":      "sphere"
+      },
+      "behavior": {
+        "tag": "hopper",
+        "params": { "jump_chance_per_sec": 0.8, "wander_radius": 4 }
+      }
+    },
+    {
+      "id": "boulder",
+      "name": "Boulder",
+      "tagline": "Slow, heavy, parks in the middle.",
+      "stats": {
+        "move_speed_mult":     0.70,
+        "jump_velocity_mult":  0.85,
+        "gravity_mult":        1.30,
+        "player_radius_mult":  1.40,
+        "player_height_mult":  1.00
+      },
+      "visual": {
+        "color":      "#8b6f3f",
+        "glow_color": "#c49a55",
+        "shape":      "cylinder"
+      },
+      "behavior": {
+        "tag": "cautious",
+        "params": { "center_pull": 0.8, "min_edge_distance": 5 }
+      }
+    },
+    {
+      "id": "dasher",
+      "name": "Dasher",
+      "tagline": "Charges spheres on purpose.",
+      "stats": {
+        "move_speed_mult":     1.20,
+        "jump_velocity_mult":  1.10,
+        "gravity_mult":        1.00,
+        "player_radius_mult":  1.00,
+        "player_height_mult":  1.00
+      },
+      "visual": {
+        "color":      "#e85da8",
+        "glow_color": "#f8a0d0",
+        "shape":      "capsule"
+      },
+      "behavior": {
+        "tag": "aggressive",
+        "params": { "sphere_seek": 0.6, "panic_threshold_ms": 3000 }
+      }
+    },
+    {
+      "id": "glider",
+      "name": "Glider",
+      "tagline": "Floaty. Lingers near the edge somehow surviving.",
+      "stats": {
+        "move_speed_mult":     1.00,
+        "jump_velocity_mult":  1.00,
+        "gravity_mult":        0.60,
+        "player_radius_mult":  0.95,
+        "player_height_mult":  1.10
+      },
+      "visual": {
+        "color":      "#a070ff",
+        "glow_color": "#d0b0ff",
+        "shape":      "capsule"
+      },
+      "behavior": {
+        "tag": "edge_walker",
+        "params": { "edge_pull": 0.5, "ledge_recovery": 0.8 }
+      }
+    }
+  ]
+}
