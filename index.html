@@ -448,10 +448,10 @@
      physics — the survival mechanic uses bespoke kinematic motion +
      AABB-by-tile ground sensing in index.js. See PORT_NOTES.md for the
      architecture pick. -->
-<!-- Pinned to Babylon 6.x (engine + modules built/tested against v6 API).
+<!-- Pinned to Babylon v6.49.0 (engine + modules built/tested against v6 API).
      The cdn.babylonjs.com root URL serves rolling-latest (currently v9.x);
-     pinning via jsdelivr avoids breakage from major version bumps. -->
-<script src="https://cdn.jsdelivr.net/npm/babylonjs@6.50.0/babylon.js"></script>
+     versioned path on the same CDN avoids breakage from major version bumps. -->
+<script src="https://cdn.babylonjs.com/v6.49.0/babylon.js"></script>
 <!-- Wave-1 add-on modules. Each registers handlers on window.FallSurvive
      before index.js boots. Files are intentionally loaded BEFORE index.js
      so the IIFE sees registered handlers when applyIPTextures /
