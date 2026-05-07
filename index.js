@@ -150,12 +150,20 @@
     bot_count:            3,
   };
 
-  // Observer / sim mode. When observer_mode is true the engine boots into
-  // a watch-only sim — all 5 characters spawn as bots, no player, camera
-  // auto-orbits the platform center. Click-to-throw drops spheres on bots.
-  // Knobs auto-discovered by the panel agent.
+  // Observer / sim mode. Default = observer (watch-only sim, all 5 characters
+  // spawn as bots, no player, camera auto-orbits, click-to-throw drops spheres).
+  // URL params override the default:
+  //   ?play=1     → flip into play mode (select screen + pick a character)
+  //   ?observe=1  → force observer (useful if play is the deploy default)
+  // Either knob can also be flipped at runtime from the tune panel.
+  let _simModeUrlOverride = null;
+  try {
+    const _q = new URLSearchParams(location.search);
+    if (_q.has('play')) _simModeUrlOverride = false;
+    if (_q.has('observe')) _simModeUrlOverride = true;
+  } catch (_) {}
   Hooks.simConfig = Hooks.simConfig || {
-    observer_mode: true,         // true = watch sim; false = play (1 player + bots)
+    observer_mode: _simModeUrlOverride !== null ? _simModeUrlOverride : true,
     observer_actor_count: 5,     // characters spawned in observer mode (1..5)
     camera_auto_orbit_speed: 0.06,  // radians/sec — slow cinematic rotation
     click_throw_enabled: true,   // pointer-down spawns a falling sphere at the picked point
