@@ -179,8 +179,27 @@
     }
     card.appendChild(stats);
 
-    // Selection handlers.
+    // Selection handlers. Click works reliably on desktop; on Android some
+    // browsers don't fire click consistently on div[role=radio], so we also
+    // bind touchend (with a small drag-tolerance check so a swipe-to-scroll
+    // attempt doesn't accidentally select). preventDefault on the touch
+    // path stops the synthesized click that would otherwise double-fire.
     card.addEventListener('click', () => selectCard(ch.id));
+    let _ts = null;
+    card.addEventListener('touchstart', (ev) => {
+      const t = ev.touches[0];
+      if (!t) return;
+      _ts = { x: t.clientX, y: t.clientY };
+    }, { passive: true });
+    card.addEventListener('touchend', (ev) => {
+      if (!_ts) return;
+      const t = ev.changedTouches[0];
+      const dragged = t ? Math.hypot(t.clientX - _ts.x, t.clientY - _ts.y) : 0;
+      _ts = null;
+      if (dragged > 20) return;
+      ev.preventDefault();
+      selectCard(ch.id);
+    }, { passive: false });
     card.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
